@@ -3,8 +3,10 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using HolidayOptimizations.Service.Controllers;
+using HolidayOptimizations.Service.Controllers.Helpers;
 using HolidayOptimizations.Service.Entities.Configuration;
 using HolidayOptimizations.Service.Processes;
+using HolidayOptimizations.Service.Processes.Helpers;
 using HolidayOptimizations.StorageRepository.DataRepository.Features.Holidays;
 using HolidayOptimizations.StorageRepository.DataRepositoryInterface.Features.Holidays;
 using Microsoft.AspNetCore.Builder;
@@ -43,6 +45,7 @@ namespace HolidayOptimizations
             services.AddTransient<IHolidaysProcess, HolidaysService>();
             services.AddTransient<IHolidaysRepository, HolidaysRepository>();
             services.AddTransient<ITimezonesRepository, TimezonesRepository>();
+            services.AddTransient<IHolidaysHelper, PublicHolidaysHelper>();
 
             /* Swagger configuration */
             services.AddSwaggerGen(c =>

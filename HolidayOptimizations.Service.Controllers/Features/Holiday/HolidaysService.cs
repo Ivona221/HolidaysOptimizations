@@ -11,17 +11,19 @@ using System.Globalization;
 using System.Linq;
 using System.Net;
 using System.Text;
+using HolidayOptimizations.Service.Processes.Helpers;
 
 namespace HolidayOptimizations.Service.Controllers
 {
     public class HolidaysService : IHolidaysProcess
     {
-        public IHolidaysRepository _repository;
+        public IHolidaysHelper _helper;
         public ITimezonesRepository _timezonesRepository;
 
-        public HolidaysService(IHolidaysRepository repository, ITimezonesRepository timezonesRepository)
+
+        public HolidaysService(IHolidaysHelper helper, ITimezonesRepository timezonesRepository)
         {
-            _repository = repository;
+            _helper = helper;
             _timezonesRepository = timezonesRepository;
         }
 
@@ -31,30 +33,17 @@ namespace HolidayOptimizations.Service.Controllers
             {
                 var publicHolidaysByCountry = new Dictionary<string, int>();
 
-                var holidaysToInsert = new List<PublicHoliday>();
+                var holidays = _helper.GetAllHolidays(year);
 
-                var holidaysFromDb = _repository.GetPulbicHolidaysByYear(year);
-
-                foreach (var enumValue in Enum.GetValues(typeof(CountryCodesEnum)))
+                foreach (var holiday in holidays)
                 {
-                    var holidaysToInsertByCountry = new List<PublicHoliday>();
-
-                    var holidays = new List<PublicHoliday>();
-                    if (holidaysFromDb.Where(x => x.CountryCode == enumValue.ToString() && x.Date.Year == year).Any())
+                    if (!publicHolidaysByCountry.ContainsKey(holiday.CountryCode))
                     {
-                        holidays = holidaysFromDb.Where(x => x.CountryCode == enumValue.ToString()).ToList();
-                    }
-                    else
-                    {
-                        holidays = HolidaysApiWrapper<List<PublicHoliday>>.GetPublicHolidays(year, enumValue.ToString()).Result;
-                        holidays.ForEach(x => x.EndDate = x.Date.AddHours(24));
-                        holidaysToInsert.AddRange(holidays);
+                        publicHolidaysByCountry[holiday.CountryCode] = 0;
                     }
 
-                    publicHolidaysByCountry.Add(enumValue.ToString(), holidays.Count);
+                    publicHolidaysByCountry[holiday.CountryCode] += 1;
                 }
-
-                _repository.InsertHolidaysAsync(holidaysToInsert);
 
                 publicHolidaysByCountry = publicHolidaysByCountry.OrderByDescending(x => x.Value).ToDictionary(z => z.Key, y => y.Value);
 
@@ -90,34 +79,14 @@ namespace HolidayOptimizations.Service.Controllers
             {
                 var publicHolidaysByMonth = new Dictionary<int, List<PublicHoliday>>();
 
-                var holidaysToInsert = new List<PublicHoliday>();
-
-                var holidaysFromDb = _repository.GetPulbicHolidaysByYear(year);
-
                 //populate the dictionary for every month with empty list of holidays for that month
                 for (var i = 1; i <= 12; i++)
                 {
                     publicHolidaysByMonth[i] = new List<PublicHoliday>();
                 }
 
-                foreach (var enumValue in Enum.GetValues(typeof(CountryCodesEnum)))
-                {
-                    var holidaysToInsertByCountry = new List<PublicHoliday>();
-                    var holidays = new List<PublicHoliday>();
-                    if (holidaysFromDb.Where(x => x.CountryCode == enumValue.ToString() && x.Date.Year == year).Any())
-                    {
-                        holidays = holidaysFromDb.Where(x => x.CountryCode == enumValue.ToString()).ToList();
-                    }
-                    else
-                    {
-                        holidays = HolidaysApiWrapper<List<PublicHoliday>>.GetPublicHolidays(year, enumValue.ToString()).Result;
-                        holidays.ForEach(x => x.EndDate = x.Date.AddHours(24));
-                        holidaysToInsert.AddRange(holidays);
-                    }
-                    holidays.ForEach(x => publicHolidaysByMonth[x.Date.Month].Add(x));
-                }
-
-                _repository.InsertHolidaysAsync(holidaysToInsert);
+                var holidays = _helper.GetAllHolidays(year);
+                holidays.ForEach(x => publicHolidaysByMonth[x.Date.Month].Add(x));
 
                 publicHolidaysByMonth = publicHolidaysByMonth.OrderByDescending(x => x.Value.Count).ToDictionary(z => z.Key, y => y.Value);
 
@@ -150,39 +119,25 @@ namespace HolidayOptimizations.Service.Controllers
             {
                 var publicHolidaysByCountry = new Dictionary<string, List<PublicHoliday>>();
 
-                var allPublicHolidays = new List<PublicHoliday>();
+                var holidays = _helper.GetAllHolidays(year);
 
-                var holidaysToInsert = new List<PublicHoliday>();
-
-                var holidaysFromDb = _repository.GetPulbicHolidaysByYear(year);
-
-                foreach (var enumValue in Enum.GetValues(typeof(CountryCodesEnum)))
+                foreach (var holiday in holidays)
                 {
-                    var holidaysToInsertByCountry = new List<PublicHoliday>(); 
-                    var holidays = new List<PublicHoliday>();
-                    if (holidaysFromDb.Where(x => x.CountryCode == enumValue.ToString() && x.Date.Year == year).Any())
+                    if (!publicHolidaysByCountry.ContainsKey(holiday.CountryCode))
                     {
-                        holidays = holidaysFromDb.Where(x => x.CountryCode == enumValue.ToString()).ToList();
+                        publicHolidaysByCountry[holiday.CountryCode] = new List<PublicHoliday>();
                     }
-                    else
-                    {
-                        holidays = HolidaysApiWrapper<List<PublicHoliday>>.GetPublicHolidays(year, enumValue.ToString()).Result;
-                        holidays.ForEach(x => x.EndDate = x.Date.AddHours(24));
-                        holidaysToInsert.AddRange(holidays);
-                    }
-                    publicHolidaysByCountry.Add(enumValue.ToString(), holidays);
-                    allPublicHolidays.AddRange(holidays);
-                }
 
-                _repository.InsertHolidaysAsync(holidaysToInsert);
+                    publicHolidaysByCountry[holiday.CountryCode].Add(holiday);
+                }
 
                 var uniqueHolidaysByCountry = new Dictionary<string, List<PublicHoliday>>();
 
                 foreach (KeyValuePair<string, List<PublicHoliday>> element in publicHolidaysByCountry)
                 {
                     uniqueHolidaysByCountry[element.Key] = new List<PublicHoliday>();
-                    uniqueHolidaysByCountry[element.Key].AddRange(element.Value.Where(x => !allPublicHolidays.Where(y => y.Date == x.Date
-                                                                        && y.CountryCode != element.Key).Any()).ToList());
+                    uniqueHolidaysByCountry[element.Key].AddRange(element.Value.Where(x => !holidays.Any(y => y.Date == x.Date
+                                                                                                              && y.CountryCode != element.Key)).ToList());
                 }
 
                 uniqueHolidaysByCountry = uniqueHolidaysByCountry.OrderByDescending(x => x.Value.Count).ToDictionary(z => z.Key, y => y.Value);
@@ -221,86 +176,67 @@ namespace HolidayOptimizations.Service.Controllers
             {
                 var publicHolidaysByDate = new List<PublicHoliday>();
 
-                var holidaysToInsert = new List<PublicHoliday>();
+                //var holidaysToInsert = new List<PublicHoliday>();
 
                 var allHolidays = new List<PublicHoliday>();
 
                 var timezonesToSave = new List<Timezone>();
 
-                var holidaysFromDb = _repository.GetPulbicHolidaysByYear(year);
+                //var holidaysFromDb = _repository.GetPulbicHolidaysByYear(year);
                 var countryTimezonesDb = _timezonesRepository.GetAllTimezones();
 
-                foreach (var enumValue in Enum.GetValues(typeof(CountryCodesEnum)))
+                var holidays = _helper.GetAllHolidays(year);
+
+                foreach (var holiday in holidays)
                 {
-                    var holidays = new List<PublicHoliday>();
-                    if (holidaysFromDb.Where(x => x.CountryCode == enumValue.ToString() && x.Date.Year == year).Any())
+                    TimeSpan timespan = new TimeSpan(12, 00, 00);
+                    var modifiedHoliday = holiday;
+                    modifiedHoliday.Date = modifiedHoliday.Date.Add(timespan);
+                    modifiedHoliday.EndDate = modifiedHoliday.Date.AddHours(24);
+                    var countryTimezones = new Timezone();
+                    var countryTimezonesByCountry = countryTimezonesDb.Where(x => x.CountryCode.Trim() == holiday.CountryCode);
+                    if (countryTimezonesByCountry.Any())
                     {
-                        holidays = holidaysFromDb.Where(x => x.CountryCode == enumValue.ToString()).ToList();
+                        var timezoneCodes = new List<string>();
+                        countryTimezonesDb.ToList().ForEach(x => timezoneCodes.Add(x.TimezoneUTC));
+                        countryTimezones = new Timezone
+                        {
+                            CountryCode = countryTimezonesDb.FirstOrDefault().CountryCode,
+                            Timezones = timezoneCodes
+                        };
                     }
                     else
                     {
-                        holidays = HolidaysApiWrapper<List<PublicHoliday>>.GetPublicHolidays(year, enumValue.ToString()).Result;
-                        holidays.ForEach(x => x.EndDate = x.Date.AddHours(24));
-                        holidaysToInsert.AddRange(holidays);
+                        countryTimezones = TimezonesApiWrapper<Timezone>.GetCountryTimezones(holiday.CountryCode).Result;
+                        foreach (var timezone in countryTimezones.Timezones)
+                        {
+                            timezonesToSave.Add(new Timezone
+                            {
+                                CountryCode = holiday.CountryCode,
+                                TimezoneUTC = timezone
+                            });
+                        }
                     }
 
-                    allHolidays.AddRange(holidays);
-
-                    foreach (var holiday in holidays)
+                    var timeZones = new List<double>();
+                    foreach (var timezone in countryTimezones.Timezones)
                     {
-                        TimeSpan timespan = new TimeSpan(12, 00, 00);
-                        var modifiedHoliday = holiday;
-                        modifiedHoliday.Date = modifiedHoliday.Date.Add(timespan);
-                        modifiedHoliday.EndDate = modifiedHoliday.Date.AddHours(24);
-                        var countryTimezones = new Timezone();
-                        var countryTimezonesByCountry = countryTimezonesDb.Where(x=>x.CountryCode == holiday.CountryCode);
-                        if (countryTimezonesDb.Any())
+                        if (timezone == "UTC")
                         {
-                            var timezoneCodes = new List<string>();
-                            countryTimezonesDb.ToList().ForEach(x => timezoneCodes.Add(x.TimezoneUTC));
-                            countryTimezones = new Timezone
-                            {
-                                CountryCode = countryTimezonesDb.FirstOrDefault().CountryCode,
-                                Timezones = timezoneCodes
-                            };
+                            timeZones.Add(0);
                         }
                         else
                         {
-                            countryTimezones = TimezonesApiWrapper<Timezone>.GetCountryTimezones(holiday.CountryCode).Result;
-                            foreach (var timezone in countryTimezones.Timezones)
-                            {
-                                timezonesToSave.Add(new Timezone
-                                {
-                                    CountryCode = holiday.CountryCode,
-                                    TimezoneUTC = timezone
-                                });
-                            }
+                            var timezoneValue = double.Parse(timezone.Replace("UTC", "").Replace("+", "").Split(":")[0]);
+                            timeZones.Add(timezoneValue);
                         }
-
-                        var timeZones = new List<double>();
-                        var timeZonesTimeSpan = new List<TimeSpan>();
-                        foreach (var timezone in countryTimezones.Timezones)
-                        {
-                            if (timezone == "UTC")
-                            {
-                                timeZones.Add(0);
-                            }
-                            else
-                            {
-                                var timezoneValue = double.Parse(timezone.Replace("UTC", "").Replace("+", "").Split(":")[0]);
-                                timeZones.Add(timezoneValue);
-                                //timeZonesTimeSpan.Add();
-                            }
-                        }
-                        timeZones = timeZones.OrderBy(x => x).ToList();
-                        modifiedHoliday.Date = modifiedHoliday.Date.AddHours(timeZones[0]);
-                        modifiedHoliday.EndDate = modifiedHoliday.EndDate.AddHours(timeZones[timeZones.Count - 1]);
-                        publicHolidaysByDate.Add(modifiedHoliday);
                     }
-
+                    timeZones = timeZones.OrderBy(x => x).ToList();
+                    modifiedHoliday.Date = modifiedHoliday.Date.AddHours(timeZones[0]);
+                    modifiedHoliday.EndDate = modifiedHoliday.EndDate.AddHours(timeZones[timeZones.Count - 1]);
+                    publicHolidaysByDate.Add(modifiedHoliday);
                 }
 
-                _repository.InsertHolidaysAsync(holidaysToInsert);
                 _timezonesRepository.InsertTimezonesAsync(timezonesToSave);
 
                 publicHolidaysByDate = publicHolidaysByDate.OrderBy(x => x.Date).ToList();
@@ -334,8 +270,6 @@ namespace HolidayOptimizations.Service.Controllers
                 }
 
                 listOfHolidaysFinal.ForEach(x => x.Id = 0);
-
-
 
                 var response = new BaseReponse<LightspeedTravelResponse>
                 {
